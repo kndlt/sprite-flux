@@ -58,7 +58,7 @@ def generate_filename(model_id, prompt, seed, quantization=None, **kwargs):
         seo_params = f"params-{param_hash}"  # Total: 14 chars (well under 30)
     
     # Combine all parts
-    filename = f"{model_name}_{seo_prompt_with_hash}_{seo_params}.png"
+    filename = f"{model_name}___{seo_prompt_with_hash}___{seo_params}.png"
     
     return filename
 
