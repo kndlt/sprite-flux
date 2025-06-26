@@ -5,7 +5,5 @@
 - black-forest-labs/FLUX.1-dev
 - Default parameters
 
-<img src="output_1.png">
-<img src="output_2.png">
+<img src="black-forest-labs_FLUX.1-dev_seed-1337_default.png">
 
-> 
