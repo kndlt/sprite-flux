@@ -1,0 +1,12 @@
+{
+  "model_id": "black-forest-labs/FLUX.1-dev",
+  "prompt": "\nRetro Pixel Art Heroes - Ragnarok Style\nA group of pixel art heroes in a retro style, inspired by Ragnarok Online. The scene features a knight with a shining sword, a mage casting a spell, and an archer aiming an arrow, all set against a vibrant fantasy landscape. The characters are designed with bold colors and pixelated details, capturing the essence of classic RPG games.\n",
+  "seed": 3,
+  "generation_timestamp": "2025-06-26T04:27:07.383415",
+  "generation_parameters": {
+    "width": 256,
+    "height": 256
+  },
+  "quantization": "fp16",
+  "output_image": "flux1-dev-fp16___retro-pixel-art-heroes-ra-bcfb___seed-3_width-256_height-256.jpg"
+}
