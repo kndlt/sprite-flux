@@ -28,11 +28,13 @@ def seoify_text(text, max_length=100):
         seo_text = seo_text[:max_length].rstrip('-')
     return seo_text
 
-def generate_filename(model_id, prompt, seed, **kwargs):
+def generate_filename(model_id, prompt, seed, quantization=None, **kwargs):
     """Generate SEO-friendly filename with model, prompt, and parameters"""
     # Get short model name
     model_name = get_short_model_name(model_id)
-    
+    if quantization:                       # e.g. fp16, int8
+        model_name = f"{model_name}-{quantization}"
+
     # SEO-ify the prompt (limit to 25 chars to leave room for 4-digit hash)
     seo_prompt = seoify_text(prompt, 25)
     
@@ -60,11 +62,11 @@ def generate_filename(model_id, prompt, seed, **kwargs):
     
     return filename
 
-def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", **generation_params):
+def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", quantization="fp16", **generation_params):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
     # Generate SEO-friendly filename (without extension)
-    base_filename = generate_filename(model_id, prompt, seed, **generation_params).replace('.png', '')
+    base_filename = generate_filename(model_id, prompt, seed, quantization=quantization, **generation_params).replace('.png', '')
     
     # Check if files already exist
     image_path = Path(output_dir) / f"{base_filename}.png"
@@ -76,8 +78,20 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", **gene
         print(f"  Parameters: {json_path}")
         return
     
-    print(f"Loading model: {model_id}")
-    pipe = DiffusionPipeline.from_pretrained(model_id)
+    print(f"↳ Loading model: {model_id}  [{quantization}]")
+    if quantization == "fp16":
+        pipe = DiffusionPipeline.from_pretrained(model_id,
+                                                 torch_dtype=torch.float16)
+    elif quantization == "int8":
+        pipe = DiffusionPipeline.from_pretrained(model_id,
+                                                 load_in_8bit=True,
+                                                 device_map="auto")
+    elif quantization == "int4":
+        pipe = DiffusionPipeline.from_pretrained(model_id,
+                                                 load_in_4bit=True,
+                                                 device_map="auto")
+    else:
+        pipe = DiffusionPipeline.from_pretrained(model_id)
     pipe.to("cuda")
 
     set_seed(seed)
@@ -97,6 +111,7 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", **gene
         "seed": seed,
         "generation_timestamp": datetime.now().isoformat(),
         "generation_parameters": generation_params,
+        "quantization": quantization,
         "output_image": f"{base_filename}.png"
     }
     
