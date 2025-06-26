@@ -35,7 +35,7 @@ def generate_filename(model_id, prompt, seed, quantization=None, lora_repo=None,
     if lora_repo:
         short_lora = get_short_lora_name(lora_repo)
         if lora_scale is not None:
-            short_lora = f"{short_lora}"
+            short_lora = f"{short_lora}-{lora_scale:.2f}"  # e.g. retro-1.00
         model_name = f"{model_name}-{short_lora}"
     if quantization:                       # e.g. fp16, int8
         model_name = f"{model_name}-{quantization}"
@@ -126,6 +126,7 @@ def generate_and_save_image(
             adapter_name="retro",                          # arbitrary label
             cross_attention_kwargs={"scale": lora_scale}
         )
+        pipe.set_adapters(["retro"], adapter_weights=[lora_scale])
         # If you want the RAM back after loading,
         # fuse the weights and discard the adapter:
         # pipe.fuse_lora(lora_scale=lora_scale)
@@ -229,14 +230,14 @@ models = [
 ]
 
 prompt = """
-100 NPC characters for pixel art game called Machi.
+10 by 10 Retro Pixel Art Character Sheet of NPC characters for pixel art game called Machi.
 """
 
-seed = 5
+seed = 4
 
 # Optional generation parameters (add any pipeline-specific parameters here)
 generation_params = {
-    # "num_inference_steps": 10,
+    # "num_inference_steps": 40,
     # "guidance_scale": 7.5,
     # "width": 1024,
     # "height": 1024,

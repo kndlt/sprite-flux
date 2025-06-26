@@ -1,0 +1,13 @@
+{
+  "model_id": "black-forest-labs/FLUX.1-dev",
+  "prompt": "\n10 by 10 Retro Pixel Art Character Sheet of NPC characters for pixel art game called Machi.\n",
+  "seed": 4,
+  "generation_timestamp": "2025-06-26T12:48:46.696682",
+  "generation_parameters": {
+    "num_inference_steps": 40
+  },
+  "quantization": "fp16",
+  "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
+  "lora_scale": 1.0,
+  "output_image": "flux1-dev-retropixelfluxlora-ec18-1.00-fp16___10-by-10-retro-pixel-art-457e___seed-4_num_inference_steps-40.jpg"
+}
