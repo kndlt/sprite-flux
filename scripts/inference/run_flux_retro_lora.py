@@ -1,9 +1,13 @@
 from diffusers import (
-    DiffusionPipeline,
+    FluxPipeline,
     FluxControlNetPipeline,
+    FluxControlNetModel,
     ControlNetModel,
-    EulerAncestralDiscreteScheduler
+    EulerAncestralDiscreteScheduler,
+    DiffusionPipeline
 )
+from diffusers.models import FluxMultiControlNetModel
+from diffusers.utils import load_image
 from PIL import Image, ImageDraw
 import gc
 import torch
@@ -43,7 +47,7 @@ def generate_filename(model_id, prompt, seed, quantization=None, lora_repo=None,
         if lora_scale is not None:
             short_lora = f"{short_lora}-{lora_scale:.2f}"  # e.g. retro-1.00
         model_name = f"{model_name}-{short_lora}"
-    if quantization:                       # e.g. fp16, int8
+    if quantization:                       # e.g. bf16, int8
         model_name = f"{model_name}-{quantization}"
 
     # SEO-ify the prompt (limit to 25 chars to leave room for 4-digit hash)
@@ -73,17 +77,22 @@ def generate_filename(model_id, prompt, seed, quantization=None, lora_repo=None,
     
     return filename
 
-def load_pipe(model_id: str, quant: str = "fp16", controlnet_repo: str | None = None) -> DiffusionPipeline:
+def load_pipe(model_id: str, quant: str = "bf16", controlnet_repo: str | None = None) -> DiffusionPipeline:
     """
-    quant ∈ {"fp32", "fp16", "int8", "int4"}
+    quant ∈ {"bf16", "fp16", "fp32", "int8", "int4"}
     Streams weights straight to the best GPU (device_map="auto") with
     negligible host-RAM thanks to low_cpu_mem_usage=True.
     """
     quant = quant.lower()
     # args common to every flavour
-    kwargs = dict(device_map="balanced", low_cpu_mem_usage=True)
+    kwargs = dict(
+        # device_map="balanced", 
+        # low_cpu_mem_usage=True,
+    )
     if quant == "fp16":
         kwargs["torch_dtype"] = torch.float16
+    if quant == "bf16":
+        kwargs["torch_dtype"] = torch.bfloat16
     elif quant == "fp32":
         kwargs["torch_dtype"] = torch.float32          # explicit but optional
     elif quant == "int8":
@@ -93,16 +102,17 @@ def load_pipe(model_id: str, quant: str = "fp16", controlnet_repo: str | None = 
     else:
         raise ValueError(f"unknown quant: {quant}")
     if controlnet_repo:
-        control = ControlNetModel.from_pretrained(
-            controlnet_repo, torch_dtype=torch.float16
-        )
+        controlnet_union = FluxControlNetModel.from_pretrained(controlnet_repo, torch_dtype=kwargs["torch_dtype"])
+        controlnet = FluxMultiControlNetModel([controlnet_union]) # we always recommend loading via FluxMultiControlNetModel
+        # controlnet.to("cuda")
         pipe = FluxControlNetPipeline.from_pretrained(
-            model_id, controlnet=control, **kwargs
+            model_id, controlnet=controlnet, **kwargs
         )
+        pipe.to("cuda")
     else:
-        pipe = DiffusionPipeline.from_pretrained(model_id, **kwargs)
+        pipe = FluxPipeline.from_pretrained(model_id, **kwargs)
     # scheduler swap (do it AFTER instantiation)
-    pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+    # pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
     return pipe
 
 def generate_and_save_image(
@@ -110,7 +120,7 @@ def generate_and_save_image(
     prompt, 
     seed, 
     output_dir="outputs", 
-    quantization="fp16", 
+    quantization="bf16", 
     lora_repo=None,
     lora_scale=1.0,
     controlnet_repo=None,
@@ -144,11 +154,15 @@ def generate_and_save_image(
     cond = build_grid_mask() if controlnet_repo else None
     gen_kwargs = dict(**generation_params)
     if cond is not None:
+        # cond_tensor = (
+        #     torch.from_numpy(np.array(cond)).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+        # ).to(pipe.device)  # 👈 move to same device
         gen_kwargs.update(
+            # https://huggingface.co/Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro
             dict(
-                controlnet_conditioning_image=cond,
-                controlnet_conditioning_scale=control_scale,
-                control_mode=1
+                control_image=[load_image(cond)],
+                control_mode=[1],
+                controlnet_conditioning_scale=[control_scale],
             )
         )
 
@@ -234,18 +248,18 @@ def get_short_lora_name(lora_repo):
     lora_hash = hashlib.sha256(lora_repo.encode()).hexdigest()[:4]
     return f"{seo_base}-{lora_hash}"
 
-def build_grid_mask(res=1024, cells=8, pad=8):
+def build_grid_mask(res=32, cells=8, pad=1):
     """
     White squares where sprites go, black elsewhere.
     For FLUX 512x512 base resolution.
     """
-    m = Image.new("L", (res, res), 0)
+    m = Image.new("RGB", (res, res), (255, 255, 255))
     draw, cell =  ImageDraw.Draw(m), res // cells
     for y in range(cells):
         for x in range(cells):
             draw.rectangle(
                 [x*cell+pad, y*cell+pad, (x+1)*cell-pad, (y+1)*cell-pad],
-                fill=255
+                fill=(128, 128, 128)
             )
     return m
 
@@ -253,19 +267,30 @@ def build_grid_mask(res=1024, cells=8, pad=8):
 models = [
     # {
     #     "model_id": "black-forest-labs/FLUX.1-dev",
-    #     "quantization": "fp16",
+    #     "quantization": "bf16",
     #     "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
     #     "lora_scale": 1.0
     # },
+    # {
+    #     "model_id": "black-forest-labs/FLUX.1-schnell",
+    #     "quantization": "bf16",
+    #     "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
+    #     "lora_scale": 1.0,
+    #     # "controlnet_repo": None,
+    #     "controlnet_repo": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",  # v1 (has tile)
+    #     "control_scale": 1.0,
+    # },
     {
-        "model_id": "black-forest-labs/FLUX.1-schnell",
-        "quantization": "fp16",
+        "model_id": "black-forest-labs/FLUX.1-dev",
+        "quantization": "bf16",
+        # "guidance_scale": 10,
+        # "max_sequence_length": 50,
+        # "generator": torch.Generator("cpu").manual_seed(0)
         "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
         "lora_scale": 1.0,
-        # "controlnet_repo": None,
-        "controlnet_repo": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",  # v1 (has tile)
-        "control_scale": 1.0,
-    }
+        "controlnet_repo": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
+        "control_scale": 0.4,
+    },
     # Add more variants here if needed
 ]
 
