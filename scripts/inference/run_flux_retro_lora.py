@@ -62,6 +62,31 @@ def generate_filename(model_id, prompt, seed, quantization=None, **kwargs):
     
     return filename
 
+def load_pipe(model_id: str, quant: str = "fp16") -> DiffusionPipeline:
+    """
+    quant ∈ {"fp32", "fp16", "int8", "int4"}
+    Streams weights straight to the best GPU (device_map="auto") with
+    negligible host-RAM thanks to low_cpu_mem_usage=True.
+    """
+    quant = quant.lower()
+
+    # args common to every flavour
+    kwargs = dict(device_map="balanced", low_cpu_mem_usage=True)
+
+    if quant == "fp16":
+        kwargs["torch_dtype"] = torch.float16
+    elif quant == "fp32":
+        kwargs["torch_dtype"] = torch.float32          # explicit but optional
+    elif quant == "int8":
+        kwargs["load_in_8bit"] = True                  # bitsandbytes
+    elif quant == "int4":
+        kwargs["load_in_4bit"] = True                  # bitsandbytes
+    else:
+        raise ValueError(f"unknown quant: {quant}")
+
+    # ONE call, regardless of precision
+    return DiffusionPipeline.from_pretrained(model_id, **kwargs)
+
 def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", quantization="fp16", **generation_params):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
@@ -79,21 +104,7 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", quanti
         return
     
     print(f"↳ Loading model: {model_id}  [{quantization}]")
-    if quantization == "fp16":
-        pipe = DiffusionPipeline.from_pretrained(model_id,
-                                                 torch_dtype=torch.float16)
-    elif quantization == "int8":
-        pipe = DiffusionPipeline.from_pretrained(model_id,
-                                                 load_in_8bit=True,
-                                                 device_map="auto")
-    elif quantization == "int4":
-        pipe = DiffusionPipeline.from_pretrained(model_id,
-                                                 load_in_4bit=True,
-                                                 device_map="auto")
-    else:
-        pipe = DiffusionPipeline.from_pretrained(model_id)
-    pipe.to("cuda")
-
+    pipe = load_pipe(model_id, quant=quantization)
     set_seed(seed)
 
     print(f"Generating image with seed {seed}")
@@ -123,6 +134,7 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", quanti
 
     # -------- VRAM cleanup --------
     del image          # drop PIL image reference
+    pipe.reset_device_map() 
     pipe.to("meta")    # move weights off GPU first
     del pipe           # release DiffusionPipeline
     torch.cuda.empty_cache()
