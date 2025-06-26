@@ -228,7 +228,7 @@ Retro Pixel Art Heroes - Ragnarok Style
 A group of pixel art heroes in a retro style, inspired by Ragnarok Online. The scene features a knight with a shining sword, a mage casting a spell, and an archer aiming an arrow, all set against a vibrant fantasy landscape. The characters are designed with bold colors and pixelated details, capturing the essence of classic RPG games.
 """
 
-seed = 3
+seeds = 11
 
 # Optional generation parameters (add any pipeline-specific parameters here)
 generation_params = {
