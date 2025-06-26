@@ -4,6 +4,7 @@ import random
 import numpy as np
 import re
 import json
+import hashlib
 from pathlib import Path
 from datetime import datetime
 
@@ -45,12 +46,22 @@ def generate_filename(model_id, prompt, seed, **kwargs):
     # Combine all parts
     filename = f"{model_name}_{seo_prompt}_{seo_params}.png"
     
-    # Ensure total length is reasonable (under 255 chars for filesystem compatibility)
+    # If filename is too long, use hash for parameters
     if len(filename) > 200:
-        # Truncate prompt part if needed
-        available_chars = 200 - len(model_name) - len(seo_params) - 10  # 10 for separators and extension
-        seo_prompt = seoify_text(prompt, available_chars)
-        filename = f"{model_name}_{seo_prompt}_{seo_params}.png"
+        # Create a hash of all parameters (including seed)
+        param_dict = {"seed": seed, **kwargs}
+        param_string = json.dumps(param_dict, sort_keys=True)
+        param_hash = hashlib.sha256(param_string.encode()).hexdigest()[:7]
+        
+        # Use longer prompt since we're saving space on parameters
+        seo_prompt = seoify_text(prompt, 80)
+        filename = f"{model_name}_{seo_prompt}_{param_hash}.png"
+        
+        # Final check - if still too long, truncate prompt further
+        if len(filename) > 200:
+            available_chars = 200 - len(model_name) - len(param_hash) - 10  # 10 for separators and extension
+            seo_prompt = seoify_text(prompt, available_chars)
+            filename = f"{model_name}_{seo_prompt}_{param_hash}.png"
     
     return filename
 
