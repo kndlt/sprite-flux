@@ -224,8 +224,8 @@ models = [
 ]
 
 prompt = """
-Retro Pixel Art Heroes - Ragnarok Style
-A group of pixel art heroes in a retro style, inspired by Ragnarok Online. The scene features a knight with a shining sword, a mage casting a spell, and an archer aiming an arrow, all set against a vibrant fantasy landscape. The characters are designed with bold colors and pixelated details, capturing the essence of classic RPG games.
+Game Sprite Resource - Character sheet for retro-style sidescroller game
+4 by 2 grid of 8-bit pixel art characters, each 32x128 pixels
 """
 
 seed = 3
@@ -234,8 +234,8 @@ seed = 3
 generation_params = {
     # "num_inference_steps": 10,
     # "guidance_scale": 7.5,
-    "width": 256,
-    "height": 256,
+    "width": 1024,
+    "height": 1024,
 }
 
 for model in models:
