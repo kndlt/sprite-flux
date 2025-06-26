@@ -58,7 +58,7 @@ def generate_filename(model_id, prompt, seed, quantization=None, **kwargs):
         seo_params = f"params-{param_hash}"  # Total: 14 chars (well under 30)
     
     # Combine all parts
-    filename = f"{model_name}___{seo_prompt_with_hash}___{seo_params}.png"
+    filename = f"{model_name}___{seo_prompt_with_hash}___{seo_params}.jpg"
     
     return filename
 
@@ -87,14 +87,22 @@ def load_pipe(model_id: str, quant: str = "fp16") -> DiffusionPipeline:
     # ONE call, regardless of precision
     return DiffusionPipeline.from_pretrained(model_id, **kwargs)
 
-def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", quantization="fp16", **generation_params):
+def generate_and_save_image(
+    model_id, 
+    prompt, 
+    seed, 
+    output_dir="outputs", 
+    quantization="fp16", 
+    lora_repo=None,
+    lora_scale=1.0,
+    **generation_params):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
     # Generate SEO-friendly filename (without extension)
-    base_filename = generate_filename(model_id, prompt, seed, quantization=quantization, **generation_params).replace('.png', '')
+    base_filename = generate_filename(model_id, prompt, seed, quantization=quantization, **generation_params).replace('.jpg', '')
     
     # Check if files already exist
-    image_path = Path(output_dir) / f"{base_filename}.png"
+    image_path = Path(output_dir) / f"{base_filename}.jpg"
     json_path = Path(output_dir) / f"{base_filename}.json"
     
     if image_path.exists() and json_path.exists():
@@ -105,6 +113,19 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", quanti
     
     print(f"↳ Loading model: {model_id}  [{quantization}]")
     pipe = load_pipe(model_id, quant=quantization)
+
+    # ----------  🎛  LoRA magic  ----------
+    if lora_repo:
+        pipe.load_lora_weights(
+            lora_repo,
+            adapter_name="retro",                          # arbitrary label
+            cross_attention_kwargs={"scale": lora_scale}
+        )
+        # If you want the RAM back after loading,
+        # fuse the weights and discard the adapter:
+        # pipe.fuse_lora(lora_scale=lora_scale)
+        print(f"✓ Retro LoRA attached (scale={lora_scale})")
+
     set_seed(seed)
 
     print(f"Generating image with seed {seed}")
@@ -113,7 +134,7 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", quanti
         image = pipe(prompt, **generation_params).images[0]
 
     # Save image
-    image.save(image_path)
+    image.save(image_path, format='JPEG', quality=90)
     print(f"Saved image to {image_path}")
     
     # Save parameters as JSON
@@ -124,7 +145,7 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", quanti
         "generation_timestamp": datetime.now().isoformat(),
         "generation_parameters": generation_params,
         "quantization": quantization,
-        "output_image": f"{base_filename}.png"
+        "output_image": f"{base_filename}.jpg"
     }
     
     with open(json_path, 'w', encoding='utf-8') as f:
@@ -169,12 +190,27 @@ def get_short_model_name(model_id):
 
 # ---- Config ----
 models = [
-    "black-forest-labs/FLUX.1-dev",
-    "black-forest-labs/FLUX.1-schnell",
+    {
+        "model_id": "black-forest-labs/FLUX.1-dev",
+        "quantization": "fp16",
+        "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
+        "lora_scale": 1.0
+    },
+    {
+        "model_id": "black-forest-labs/FLUX.1-schnell",
+        "quantization": "fp16",
+        "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
+        "lora_scale": 1.0
+    }
     # Add more variants here if needed
 ]
-prompt = "Pixel art of a cute cat, vibrant colors, 8-bit style"
-seed = 1337
+
+prompt = """
+Retro Pixel Art Heroes - Ragnarok Style
+A group of pixel art heroes in a retro style, inspired by Ragnarok Online. The scene features a knight with a shining sword, a mage casting a spell, and an archer aiming an arrow, all set against a vibrant fantasy landscape. The characters are designed with bold colors and pixelated details, capturing the essence of classic RPG games.
+"""
+
+seed = 3
 
 # Optional generation parameters (add any pipeline-specific parameters here)
 generation_params = {
@@ -185,4 +221,13 @@ generation_params = {
 }
 
 for model in models:
-    generate_and_save_image(model, prompt, seed, **generation_params)
+    generate_and_save_image(
+        model["model_id"], 
+        prompt, 
+        seed=seed,
+        output_dir="outputs",
+        quantization=model["quantization"],
+        lora_repo=model["lora_repo"],
+        lora_scale=model["lora_scale"],
+        **generation_params
+    )
