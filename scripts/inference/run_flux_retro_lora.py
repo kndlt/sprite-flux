@@ -121,7 +121,7 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", quanti
 
     # -------- VRAM cleanup --------
     del image          # drop PIL image reference
-    pipe.to("cpu")     # move weights off GPU first
+    pipe.to("meta")    # move weights off GPU first
     del pipe           # release DiffusionPipeline
     torch.cuda.empty_cache()
     gc.collect()
