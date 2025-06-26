@@ -173,7 +173,7 @@ models = [
     "black-forest-labs/FLUX.1-schnell",
     # Add more variants here if needed
 ]
-prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
+prompt = "Pixel art of a cute cat, vibrant colors, 8-bit style"
 seed = 1337
 
 # Optional generation parameters (add any pipeline-specific parameters here)
