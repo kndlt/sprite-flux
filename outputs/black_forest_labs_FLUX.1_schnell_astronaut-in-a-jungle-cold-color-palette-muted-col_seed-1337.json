@@ -1,0 +1,8 @@
+{
+  "model_id": "black-forest-labs/FLUX.1-schnell",
+  "prompt": "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
+  "seed": 1337,
+  "generation_timestamp": "2025-06-26T01:29:52.339458",
+  "generation_parameters": {},
+  "output_image": "black_forest_labs_FLUX.1_schnell_astronaut-in-a-jungle-cold-color-palette-muted-col_seed-1337.png"
+}
