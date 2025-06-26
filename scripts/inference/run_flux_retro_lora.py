@@ -29,13 +29,17 @@ def seoify_text(text, max_length=100):
 
 def generate_filename(model_id, prompt, seed, **kwargs):
     """Generate SEO-friendly filename with model, prompt, and parameters"""
-    # Get model name part
-    model_name = model_id.replace('/', '_').replace('-', '_')
+    # Get short model name
+    model_name = get_short_model_name(model_id)
     
-    # SEO-ify the prompt (limit to ~50 chars to leave room for other parts)
-    seo_prompt = seoify_text(prompt, 50)
+    # SEO-ify the prompt (limit to 25 chars to leave room for 4-digit hash)
+    seo_prompt = seoify_text(prompt, 25)
     
-    # Create parameter string
+    # Add 4-digit hash of the original prompt for uniqueness
+    prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:4]
+    seo_prompt_with_hash = f"{seo_prompt}-{prompt_hash}"  # Total: max 30 chars
+    
+    # Create parameter string - if too long, use hash instead
     param_parts = [f"seed-{seed}"]
     for key, value in kwargs.items():
         if value is not None:
@@ -43,25 +47,15 @@ def generate_filename(model_id, prompt, seed, **kwargs):
     
     seo_params = "_".join(param_parts)
     
-    # Combine all parts
-    filename = f"{model_name}_{seo_prompt}_{seo_params}.png"
-    
-    # If filename is too long, use hash for parameters
-    if len(filename) > 200:
-        # Create a hash of all parameters (including seed)
+    # If params too long (>30 chars), use hash instead
+    if len(seo_params) > 30:
         param_dict = {"seed": seed, **kwargs}
         param_string = json.dumps(param_dict, sort_keys=True)
         param_hash = hashlib.sha256(param_string.encode()).hexdigest()[:7]
-        
-        # Use longer prompt since we're saving space on parameters
-        seo_prompt = seoify_text(prompt, 80)
-        filename = f"{model_name}_{seo_prompt}_{param_hash}.png"
-        
-        # Final check - if still too long, truncate prompt further
-        if len(filename) > 200:
-            available_chars = 200 - len(model_name) - len(param_hash) - 10  # 10 for separators and extension
-            seo_prompt = seoify_text(prompt, available_chars)
-            filename = f"{model_name}_{seo_prompt}_{param_hash}.png"
+        seo_params = f"params-{param_hash}"  # Total: 14 chars (well under 30)
+    
+    # Combine all parts
+    filename = f"{model_name}_{seo_prompt_with_hash}_{seo_params}.png"
     
     return filename
 
@@ -109,10 +103,37 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", **gene
         json.dump(params_data, f, indent=2, ensure_ascii=False)
     print(f"Saved parameters to {json_path}")
 
+def get_short_model_name(model_id):
+    """Generate a short, SEO-friendly model name with hash"""
+    # Common model short names mapping
+    model_short_names = {
+        "black-forest-labs/FLUX.1-dev": "flux1-dev",
+        "black-forest-labs/FLUX.1-schnell": "flux1-schnell", 
+        "stabilityai/stable-diffusion-xl-base-1.0": "sdxl-base",
+        "stabilityai/stable-diffusion-2-1": "sd2-1",
+        "runwayml/stable-diffusion-v1-5": "sd1-5",
+        "CompVis/stable-diffusion-v1-4": "sd1-4",
+    }
+    
+    # If we have a predefined short name, use it
+    if model_id in model_short_names:
+        return model_short_names[model_id]
+    
+    # Otherwise, create a short hash-based name
+    model_hash = hashlib.sha256(model_id.encode()).hexdigest()[:6]
+    # Extract meaningful parts from model ID
+    parts = model_id.replace('/', '-').replace('_', '-').split('-')
+    # Take first meaningful part and combine with hash
+    if len(parts) > 0:
+        base_name = parts[0][:8]  # Max 8 chars from first part
+        return f"{base_name}-{model_hash}"
+    else:
+        return f"model-{model_hash}"
+
 # ---- Config ----
 models = [
     "black-forest-labs/FLUX.1-dev",
-    # "black-forest-labs/FLUX.1-schnell",
+    "black-forest-labs/FLUX.1-schnell",
     # Add more variants here if needed
 ]
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
@@ -120,7 +141,7 @@ seed = 1337
 
 # Optional generation parameters (add any pipeline-specific parameters here)
 generation_params = {
-    "num_inference_steps": 10,
+    # "num_inference_steps": 10,
     # "guidance_scale": 7.5,
     "width": 256,
     "height": 256,
