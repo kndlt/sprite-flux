@@ -1,0 +1,37 @@
+[project]
+name = "sprite-flux"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Sprited Dev",email = "dev@sprited.app"}
+]
+readme = "README.md"
+requires-python = "^3.12"
+dependencies = [
+    "torch (>=2.7.1,<3.0.0)",
+    "torchvision (>=0.22.1,<0.23.0)",
+    "torchaudio (>=2.7.1,<3.0.0)",
+    "diffusers (>=0.34.0,<0.35.0)",
+    "transformers (>=4.52.4,<5.0.0)",
+    "accelerate (>=1.8.1,<2.0.0)",
+    "xformers (>=0.0.31,<0.0.32)",
+    "huggingface-hub (>=0.33.1,<0.34.0)",
+    "protobuf (>=6.31.1,<7.0.0)",
+    "sentencepiece (>=0.2.0,<0.3.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "torch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+priority = "explicit"
+
+
+[tool.poetry.dependencies]
+torch = {source = "torch-cu128"}
+torchvision = {source = "torch-cu128"}
+torchaudio = {source = "torch-cu128"}
