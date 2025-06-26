@@ -35,7 +35,7 @@ def generate_filename(model_id, prompt, seed, quantization=None, lora_repo=None,
     if lora_repo:
         short_lora = get_short_lora_name(lora_repo)
         if lora_scale is not None:
-            short_lora = f"{short_lora}x{str(lora_scale).replace('.', '')}"
+            short_lora = f"{short_lora}"
         model_name = f"{model_name}-{short_lora}"
     if quantization:                       # e.g. fp16, int8
         model_name = f"{model_name}-{quantization}"
@@ -199,6 +199,11 @@ def get_short_lora_name(lora_repo):
     """Generate a short SEO-friendly LoRA name with hash"""
     if not lora_repo:
         return None
+    
+    lora_short_names = {
+        "prithivMLmods/Retro-Pixel-Flux-LoRA": "retro"
+    }
+    
     # Use repo name part
     base = lora_repo.split('/')[-1]
     seo_base = seoify_text(base, max_length=20)
@@ -224,18 +229,17 @@ models = [
 ]
 
 prompt = """
-Game Sprite Resource - Character sheet for retro-style sidescroller game
-4 by 2 grid of 8-bit pixel art characters, each 32x128 pixels
+100 NPC characters for pixel art game called Machi.
 """
 
-seed = 3
+seed = 5
 
 # Optional generation parameters (add any pipeline-specific parameters here)
 generation_params = {
     # "num_inference_steps": 10,
     # "guidance_scale": 7.5,
-    "width": 1024,
-    "height": 1024,
+    # "width": 1024,
+    # "height": 1024,
 }
 
 for model in models:

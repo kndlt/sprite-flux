@@ -1,0 +1,11 @@
+{
+  "model_id": "black-forest-labs/FLUX.1-schnell",
+  "prompt": "\n100 NPC characters for pixel art game called Machi.\n",
+  "seed": 5,
+  "generation_timestamp": "2025-06-26T04:50:23.706553",
+  "generation_parameters": {},
+  "quantization": "fp16",
+  "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
+  "lora_scale": 1.0,
+  "output_image": "flux1-schnell-retropixelfluxlora-ec18-fp16___100-npc-characters-for-pi-ead5___seed-5.jpg"
+}
