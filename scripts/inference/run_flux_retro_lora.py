@@ -1,4 +1,9 @@
-from diffusers import ControlNetModel, EulerAncestralDiscreteScheduler
+from diffusers import (
+    DiffusionPipeline,
+    FluxControlNetPipeline,
+    ControlNetModel,
+    EulerAncestralDiscreteScheduler
+)
 from PIL import Image, ImageDraw
 import gc
 import torch
@@ -75,10 +80,8 @@ def load_pipe(model_id: str, quant: str = "fp16", controlnet_repo: str | None = 
     negligible host-RAM thanks to low_cpu_mem_usage=True.
     """
     quant = quant.lower()
-
     # args common to every flavour
     kwargs = dict(device_map="balanced", low_cpu_mem_usage=True)
-
     if quant == "fp16":
         kwargs["torch_dtype"] = torch.float16
     elif quant == "fp32":
@@ -90,10 +93,15 @@ def load_pipe(model_id: str, quant: str = "fp16", controlnet_repo: str | None = 
     else:
         raise ValueError(f"unknown quant: {quant}")
     if controlnet_repo:
-        control = ControlNetModel.from_pretrained(controlnet_repo, torch_dtype=torch.float16)
-        kwargs["controlnet"] = control
-    # scheduler swap: Euler a behaves better for tiny sprites
-    pipe = DiffusionPipeline.from_pretrained(model_id, **kwargs)
+        control = ControlNetModel.from_pretrained(
+            controlnet_repo, torch_dtype=torch.float16
+        )
+        pipe = FluxControlNetPipeline.from_pretrained(
+            model_id, controlnet=control, **kwargs
+        )
+    else:
+        pipe = DiffusionPipeline.from_pretrained(model_id, **kwargs)
+    # scheduler swap (do it AFTER instantiation)
     pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
     return pipe
 
@@ -124,7 +132,7 @@ def generate_and_save_image(
         return
     
     print(f"↳ Loading model: {model_id}  [{quantization}]")
-    pipe = load_pipe(model_id, quant=quantization)
+    pipe = load_pipe(model_id, quant=quantization, controlnet_repo=controlnet_repo)
 
     # ----------  🎛  LoRA magic  ----------
     if lora_repo:
@@ -139,7 +147,8 @@ def generate_and_save_image(
         gen_kwargs.update(
             dict(
                 controlnet_conditioning_image=cond,
-                controlnet_conditioning_scale=control_scale
+                controlnet_conditioning_scale=control_scale,
+                control_mode=1
             )
         )
 
@@ -253,8 +262,8 @@ models = [
         "quantization": "fp16",
         "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
         "lora_scale": 1.0,
-        "controlnet_repo": None
-        # "controlnet_repo": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",  # v1 (has tile)
+        # "controlnet_repo": None,
+        "controlnet_repo": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",  # v1 (has tile)
         "control_scale": 1.0,
     }
     # Add more variants here if needed
@@ -283,7 +292,7 @@ for model in models:
         quantization=model["quantization"],
         lora_repo=model["lora_repo"],
         lora_scale=model["lora_scale"],
-        controlnet_repo=model.get("controlnet_repo"), 
-        control_scale=model.get("control_scale",0.5)
+        controlnet_repo=model["controlnet_repo"], 
+        control_scale=model["control_scale"],
         **generation_params
     )
