@@ -28,10 +28,15 @@ def seoify_text(text, max_length=100):
         seo_text = seo_text[:max_length].rstrip('-')
     return seo_text
 
-def generate_filename(model_id, prompt, seed, quantization=None, **kwargs):
+def generate_filename(model_id, prompt, seed, quantization=None, lora_repo=None, lora_scale=None, **kwargs):
     """Generate SEO-friendly filename with model, prompt, and parameters"""
     # Get short model name
     model_name = get_short_model_name(model_id)
+    if lora_repo:
+        short_lora = get_short_lora_name(lora_repo)
+        if lora_scale is not None:
+            short_lora = f"{short_lora}x{str(lora_scale).replace('.', '')}"
+        model_name = f"{model_name}-{short_lora}"
     if quantization:                       # e.g. fp16, int8
         model_name = f"{model_name}-{quantization}"
 
@@ -99,8 +104,8 @@ def generate_and_save_image(
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
     # Generate SEO-friendly filename (without extension)
-    base_filename = generate_filename(model_id, prompt, seed, quantization=quantization, **generation_params).replace('.jpg', '')
-    
+    base_filename = generate_filename(model_id, prompt, seed, quantization=quantization, lora_repo=lora_repo, lora_scale=lora_scale, **generation_params).replace('.jpg', '')
+
     # Check if files already exist
     image_path = Path(output_dir) / f"{base_filename}.jpg"
     json_path = Path(output_dir) / f"{base_filename}.json"
@@ -145,6 +150,8 @@ def generate_and_save_image(
         "generation_timestamp": datetime.now().isoformat(),
         "generation_parameters": generation_params,
         "quantization": quantization,
+        "lora_repo": lora_repo,
+        "lora_scale": lora_scale,
         "output_image": f"{base_filename}.jpg"
     }
     
@@ -187,6 +194,17 @@ def get_short_model_name(model_id):
         return f"{base_name}-{model_hash}"
     else:
         return f"model-{model_hash}"
+
+def get_short_lora_name(lora_repo):
+    """Generate a short SEO-friendly LoRA name with hash"""
+    if not lora_repo:
+        return None
+    # Use repo name part
+    base = lora_repo.split('/')[-1]
+    seo_base = seoify_text(base, max_length=20)
+    # 4-digit hash for uniqueness
+    lora_hash = hashlib.sha256(lora_repo.encode()).hexdigest()[:4]
+    return f"{seo_base}-{lora_hash}"
 
 # ---- Config ----
 models = [
