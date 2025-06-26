@@ -160,7 +160,7 @@ def generate_and_save_image(
         gen_kwargs.update(
             # https://huggingface.co/Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro
             dict(
-                control_image=[load_image(cond)],
+                control_image=[load_image("./templates/sheet-of-8x8-chibi-characters.png")],
                 control_mode=[1],
                 controlnet_conditioning_scale=[control_scale],
             )
@@ -287,9 +287,9 @@ models = [
         # "max_sequence_length": 50,
         # "generator": torch.Generator("cpu").manual_seed(0)
         "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
-        "lora_scale": 1.0,
+        "lora_scale": 0.8,
         "controlnet_repo": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
-        "control_scale": 0.4,
+        "control_scale": 0.25,
     },
     # Add more variants here if needed
 ]
