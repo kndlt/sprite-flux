@@ -109,10 +109,9 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", quanti
 
     print(f"Generating image with seed {seed}")
     # Pass any additional generation parameters to the pipeline
-    # Disable autograd so PyTorch skips grad buffers & versioning
     with torch.inference_mode():
         image = pipe(prompt, **generation_params).images[0]
-    
+
     # Save image
     image.save(image_path)
     print(f"Saved image to {image_path}")
