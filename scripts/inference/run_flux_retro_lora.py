@@ -288,6 +288,8 @@ models = [
         # "generator": torch.Generator("cpu").manual_seed(0)
         "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
         "lora_scale": 0.8,
+        # "lora_repo": None,
+        # "lora_scale": 0.8,
         "controlnet_repo": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
         "control_scale": 0.30,
     },
