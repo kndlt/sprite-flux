@@ -1,24 +1,5 @@
-"""
-FLUX Retro LoRA Inference Script
-
-This script generates images using FLUX models with multiple prompts support.
-
-Features:
-- Multiple prompts: Define a list of prompts and generate images for all of them
-- Multiple models: Test different FLUX model variants
-- Smart file naming: SEO-friendly filenames with prompt hash for uniqueness
-- Skip existing: Automatically skips generation if output files already exist
-- Seed management: Each prompt gets a unique seed (base_seed + index)
-- Metadata saving: Saves generation parameters as JSON alongside images
-
-Usage:
-1. Edit the 'prompts' list to add your desired prompts
-2. Adjust 'base_seed' if needed (each prompt gets base_seed + index)
-3. Modify 'generation_params' for custom parameters
-4. Run the script: python run_flux_retro_lora.py
-"""
-
 from diffusers import DiffusionPipeline
+import gc
 import torch
 import random
 import numpy as np
@@ -79,6 +60,58 @@ def generate_filename(model_id, prompt, seed, **kwargs):
     
     return filename
 
+def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", **generation_params):
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    
+    # Generate SEO-friendly filename (without extension)
+    base_filename = generate_filename(model_id, prompt, seed, **generation_params).replace('.png', '')
+    
+    # Check if files already exist
+    image_path = Path(output_dir) / f"{base_filename}.png"
+    json_path = Path(output_dir) / f"{base_filename}.json"
+    
+    if image_path.exists() and json_path.exists():
+        print(f"Skipping generation - files already exist:")
+        print(f"  Image: {image_path}")
+        print(f"  Parameters: {json_path}")
+        return
+    
+    print(f"Loading model: {model_id}")
+    pipe = DiffusionPipeline.from_pretrained(model_id)
+    pipe.to("cuda")
+
+    set_seed(seed)
+
+    print(f"Generating image with seed {seed}")
+    # Pass any additional generation parameters to the pipeline
+    image = pipe(prompt, **generation_params).images[0]
+    
+    # Save image
+    image.save(image_path)
+    print(f"Saved image to {image_path}")
+    
+    # Save parameters as JSON
+    params_data = {
+        "model_id": model_id,
+        "prompt": prompt,
+        "seed": seed,
+        "generation_timestamp": datetime.now().isoformat(),
+        "generation_parameters": generation_params,
+        "output_image": f"{base_filename}.png"
+    }
+    
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(params_data, f, indent=2, ensure_ascii=False)
+    print(f"Saved parameters to {json_path}")
+
+    # -------- VRAM cleanup --------
+    del image          # drop PIL image reference
+    pipe.to("cpu")     # move weights off GPU first
+    del pipe           # release DiffusionPipeline
+    torch.cuda.empty_cache()
+    gc.collect()
+    print("🧹 VRAM cleared.\n")
+
 def get_short_model_name(model_id):
     """Generate a short, SEO-friendly model name with hash"""
     # Common model short names mapping
@@ -106,97 +139,14 @@ def get_short_model_name(model_id):
     else:
         return f"model-{model_hash}"
 
-def generate_and_save_batch(model_id, prompts, base_seed, output_dir="outputs", **generation_params):
-    """Generate and save images for multiple prompts efficiently"""
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    
-    # Check which files already exist
-    prompts_to_generate = []
-    seeds_to_generate = []
-    filenames_to_generate = []
-    
-    print(f"Checking existing files for {len(prompts)} prompts...")
-    for i, prompt in enumerate(prompts):
-        seed = base_seed + i
-        base_filename = generate_filename(model_id, prompt, seed, **generation_params).replace('.png', '')
-        image_path = Path(output_dir) / f"{base_filename}.png"
-        json_path = Path(output_dir) / f"{base_filename}.json"
-        
-        if image_path.exists() and json_path.exists():
-            print(f"Skipping (exists): {base_filename}.png")
-        else:
-            prompts_to_generate.append(prompt)
-            seeds_to_generate.append(seed)
-            filenames_to_generate.append(base_filename)
-    
-    # If no new images to generate, return early
-    if not prompts_to_generate:
-        print("All images already exist, skipping generation")
-        return
-    
-    print(f"Loading model: {model_id}")
-    pipe = DiffusionPipeline.from_pretrained(model_id)
-    pipe.to("cuda")
-    
-    print(f"Generating {len(prompts_to_generate)} new images...")
-    
-    try:
-        # Generate images one by one (more memory efficient than true batching)
-        for i, (prompt, seed, base_filename) in enumerate(zip(prompts_to_generate, seeds_to_generate, filenames_to_generate)):
-            print(f"\n[{i+1}/{len(prompts_to_generate)}] Generating: {prompt[:60]}{'...' if len(prompt) > 60 else ''}")
-            print(f"Seed: {seed}")
-            
-            set_seed(seed)
-            
-            # Generate image
-            image = pipe(prompt, **generation_params).images[0]
-            
-            # Save image
-            image_path = Path(output_dir) / f"{base_filename}.png"
-            image.save(image_path)
-            print(f"Saved: {image_path}")
-            
-            # Save parameters as JSON
-            json_path = Path(output_dir) / f"{base_filename}.json"
-            params_data = {
-                "model_id": model_id,
-                "prompt": prompt,
-                "seed": seed,
-                "generation_timestamp": datetime.now().isoformat(),
-                "generation_parameters": generation_params,
-                "output_image": f"{base_filename}.png"
-            }
-            
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(params_data, f, indent=2, ensure_ascii=False)
-            print(f"Saved metadata: {json_path}")
-        
-        print(f"Completed batch generation for model: {model_id}")
-    
-    finally:
-        # Aggressive GPU memory cleanup for large models
-        pipe.to("cpu")  # Move to CPU first
-        del pipe
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()  # Wait for all operations to complete
-
 # ---- Config ----
 models = [
     "black-forest-labs/FLUX.1-dev",
     "black-forest-labs/FLUX.1-schnell",
     # Add more variants here if needed
 ]
-
-# Multiple prompts - each will get a different seed (base_seed + index)
-prompts = [
-    "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
-    # "A magical forest with glowing mushrooms, fantasy style, vibrant colors",
-    # "Cyberpunk city at night, neon lights, futuristic, detailed architecture",
-    # "Medieval castle on a hill, dramatic lighting, sunset, photorealistic",
-    # Add more prompts here as needed
-]
-
-base_seed = 1337
+prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
+seed = 1337
 
 # Optional generation parameters (add any pipeline-specific parameters here)
 generation_params = {
@@ -206,7 +156,5 @@ generation_params = {
     "height": 256,
 }
 
-# Generate images for each model and all prompts
 for model in models:
-    print(f"\n=== Processing model: {model} ===")
-    generate_and_save_batch(model, prompts, base_seed, **generation_params)
+    generate_and_save_image(model, prompt, seed, **generation_params)
