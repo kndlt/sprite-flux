@@ -289,7 +289,7 @@ models = [
         "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
         "lora_scale": 0.8,
         "controlnet_repo": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
-        "control_scale": 0.25,
+        "control_scale": 0.30,
     },
     # Add more variants here if needed
 ]
