@@ -1,4 +1,5 @@
-from diffusers import DiffusionPipeline
+from diffusers import ControlNetModel, EulerAncestralDiscreteScheduler
+from PIL import Image, ImageDraw
 import gc
 import torch
 import random
@@ -67,7 +68,7 @@ def generate_filename(model_id, prompt, seed, quantization=None, lora_repo=None,
     
     return filename
 
-def load_pipe(model_id: str, quant: str = "fp16") -> DiffusionPipeline:
+def load_pipe(model_id: str, quant: str = "fp16", controlnet_repo: str | None = None) -> DiffusionPipeline:
     """
     quant ∈ {"fp32", "fp16", "int8", "int4"}
     Streams weights straight to the best GPU (device_map="auto") with
@@ -88,9 +89,13 @@ def load_pipe(model_id: str, quant: str = "fp16") -> DiffusionPipeline:
         kwargs["load_in_4bit"] = True                  # bitsandbytes
     else:
         raise ValueError(f"unknown quant: {quant}")
-
-    # ONE call, regardless of precision
-    return DiffusionPipeline.from_pretrained(model_id, **kwargs)
+    if controlnet_repo:
+        control = ControlNetModel.from_pretrained(controlnet_repo, torch_dtype=torch.float16)
+        kwargs["controlnet"] = control
+    # scheduler swap: Euler a behaves better for tiny sprites
+    pipe = DiffusionPipeline.from_pretrained(model_id, **kwargs)
+    pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+    return pipe
 
 def generate_and_save_image(
     model_id, 
@@ -100,6 +105,8 @@ def generate_and_save_image(
     quantization="fp16", 
     lora_repo=None,
     lora_scale=1.0,
+    controlnet_repo=None,
+    control_scale=0.5,
     **generation_params):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
@@ -121,23 +128,27 @@ def generate_and_save_image(
 
     # ----------  🎛  LoRA magic  ----------
     if lora_repo:
-        pipe.load_lora_weights(
-            lora_repo,
-            adapter_name="retro",                          # arbitrary label
-            cross_attention_kwargs={"scale": lora_scale}
-        )
+        pipe.load_lora_weights(lora_repo, adapter_name="retro")
         pipe.set_adapters(["retro"], adapter_weights=[lora_scale])
-        # If you want the RAM back after loading,
-        # fuse the weights and discard the adapter:
-        # pipe.fuse_lora(lora_scale=lora_scale)
         print(f"✓ Retro LoRA attached (scale={lora_scale})")
+
+    # Grid mask only if ControlNet present
+    cond = build_grid_mask() if controlnet_repo else None
+    gen_kwargs = dict(**generation_params)
+    if cond is not None:
+        gen_kwargs.update(
+            dict(
+                controlnet_conditioning_image=cond,
+                controlnet_conditioning_scale=control_scale
+            )
+        )
 
     set_seed(seed)
 
     print(f"Generating image with seed {seed}")
     # Pass any additional generation parameters to the pipeline
     with torch.inference_mode():
-        image = pipe(prompt, **generation_params).images[0]
+        image = pipe(prompt, **gen_kwargs).images[0]
 
     # Save image
     image.save(image_path, format='JPEG', quality=90)
@@ -153,6 +164,8 @@ def generate_and_save_image(
         "quantization": quantization,
         "lora_repo": lora_repo,
         "lora_scale": lora_scale,
+        "controlnet_repo": controlnet_repo, 
+        "control_scale":control_scale,
         "output_image": f"{base_filename}.jpg"
     }
     
@@ -212,25 +225,43 @@ def get_short_lora_name(lora_repo):
     lora_hash = hashlib.sha256(lora_repo.encode()).hexdigest()[:4]
     return f"{seo_base}-{lora_hash}"
 
+def build_grid_mask(res=1024, cells=8, pad=8):
+    """
+    White squares where sprites go, black elsewhere.
+    For FLUX 512x512 base resolution.
+    """
+    m = Image.new("L", (res, res), 0)
+    draw, cell =  ImageDraw.Draw(m), res // cells
+    for y in range(cells):
+        for x in range(cells):
+            draw.rectangle(
+                [x*cell+pad, y*cell+pad, (x+1)*cell-pad, (y+1)*cell-pad],
+                fill=255
+            )
+    return m
+
 # ---- Config ----
 models = [
-    {
-        "model_id": "black-forest-labs/FLUX.1-dev",
-        "quantization": "fp16",
-        "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
-        "lora_scale": 1.0
-    },
+    # {
+    #     "model_id": "black-forest-labs/FLUX.1-dev",
+    #     "quantization": "fp16",
+    #     "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
+    #     "lora_scale": 1.0
+    # },
     {
         "model_id": "black-forest-labs/FLUX.1-schnell",
         "quantization": "fp16",
         "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
-        "lora_scale": 1.0
+        "lora_scale": 1.0,
+        "controlnet_repo": None
+        # "controlnet_repo": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",  # v1 (has tile)
+        "control_scale": 1.0,
     }
     # Add more variants here if needed
 ]
 
 prompt = """
-10 by 10 Retro Pixel Art Character Sheet of NPC characters for pixel art game called Machi.
+8 by 8 Retro Pixel Art Character Sheet of NPC characters for pixel art game called Machi.
 """
 
 seed = 4
@@ -252,5 +283,7 @@ for model in models:
         quantization=model["quantization"],
         lora_repo=model["lora_repo"],
         lora_scale=model["lora_scale"],
+        controlnet_repo=model.get("controlnet_repo"), 
+        control_scale=model.get("control_scale",0.5)
         **generation_params
     )
