@@ -66,6 +66,21 @@ def generate_filename(model_id, prompt, seed, **kwargs):
     return filename
 
 def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", **generation_params):
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    
+    # Generate SEO-friendly filename (without extension)
+    base_filename = generate_filename(model_id, prompt, seed, **generation_params).replace('.png', '')
+    
+    # Check if files already exist
+    image_path = Path(output_dir) / f"{base_filename}.png"
+    json_path = Path(output_dir) / f"{base_filename}.json"
+    
+    if image_path.exists() and json_path.exists():
+        print(f"Skipping generation - files already exist:")
+        print(f"  Image: {image_path}")
+        print(f"  Parameters: {json_path}")
+        return
+    
     print(f"Loading model: {model_id}")
     pipe = DiffusionPipeline.from_pretrained(model_id)
     pipe.to("cuda")
@@ -75,14 +90,8 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", **gene
     print(f"Generating image with seed {seed}")
     # Pass any additional generation parameters to the pipeline
     image = pipe(prompt, **generation_params).images[0]
-
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    
-    # Generate SEO-friendly filename (without extension)
-    base_filename = generate_filename(model_id, prompt, seed, **generation_params).replace('.png', '')
     
     # Save image
-    image_path = Path(output_dir) / f"{base_filename}.png"
     image.save(image_path)
     print(f"Saved image to {image_path}")
     
@@ -96,7 +105,6 @@ def generate_and_save_image(model_id, prompt, seed, output_dir="outputs", **gene
         "output_image": f"{base_filename}.png"
     }
     
-    json_path = Path(output_dir) / f"{base_filename}.json"
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(params_data, f, indent=2, ensure_ascii=False)
     print(f"Saved parameters to {json_path}")
@@ -112,10 +120,10 @@ seed = 1337
 
 # Optional generation parameters (add any pipeline-specific parameters here)
 generation_params = {
-    # "num_inference_steps": 20,
+    "num_inference_steps": 10,
     # "guidance_scale": 7.5,
-    # "width": 512,
-    # "height": 512,
+    "width": 256,
+    "height": 256,
 }
 
 for model in models:
