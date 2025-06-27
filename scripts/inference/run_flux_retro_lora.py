@@ -167,7 +167,7 @@ def generate_and_save_image(
         gen_kwargs.update(
             # https://huggingface.co/Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro
             dict(
-                control_image=[load_image("./templates/sheet-of-4x4-chibi-characters-1024.png")],
+                control_image=[load_image("./templates/sheet-of-2x2-chibi-characters-1024.png")],
                 control_mode=[1],
                 controlnet_conditioning_scale=[control_scale],
             )
@@ -310,7 +310,7 @@ models = [
 ]
 
 prompt = """
-4 by 4 Retro Pixel Art Character Sheet of NPC characters for pixel art game called Machi.
+2 by 2 Retro Pixel Art Character Sheet of NPC characters for pixel art game called Machi.
 """
 
 seed = 5
