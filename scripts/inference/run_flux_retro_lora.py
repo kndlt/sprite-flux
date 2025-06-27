@@ -38,17 +38,18 @@ def seoify_text(text, max_length=100):
         seo_text = seo_text[:max_length].rstrip('-')
     return seo_text
 
-def generate_filename(model_id, prompt, seed, quantization=None, lora_repo=None, lora_scale=None, **kwargs):
+def generate_filename(model_id, prompt, seed, quantization=None, lora_repo=None, lora_scale=None, controlnet_repo=None, control_scale=None, **kwargs):
     """Generate SEO-friendly filename with model, prompt, and parameters"""
     # Get short model name
     model_name = get_short_model_name(model_id)
+    # if quantization:
+    #     model_name = f"{model_name}-{quantization}"
     if lora_repo:
-        short_lora = get_short_lora_name(lora_repo)
-        if lora_scale is not None:
-            short_lora = f"{short_lora}-{lora_scale:.2f}"  # e.g. retro-1.00
-        model_name = f"{model_name}-{short_lora}"
-    if quantization:                       # e.g. bf16, int8
-        model_name = f"{model_name}-{quantization}"
+        short_lora = f"l{round(lora_scale*100)}"
+        model_name = f"{model_name}_{short_lora}"
+    if controlnet_repo:
+        short_controlnet = f"c{round(control_scale*100)}"
+        model_name = f"{model_name}_{short_controlnet}"
 
     # SEO-ify the prompt (limit to 25 chars to leave room for 4-digit hash)
     seo_prompt = seoify_text(prompt, 25)
@@ -129,7 +130,13 @@ def generate_and_save_image(
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
     # Generate SEO-friendly filename (without extension)
-    base_filename = generate_filename(model_id, prompt, seed, quantization=quantization, lora_repo=lora_repo, lora_scale=lora_scale, **generation_params).replace('.jpg', '')
+    base_filename = generate_filename(
+        model_id, prompt, seed,
+        quantization=quantization,
+        lora_repo=lora_repo, lora_scale=lora_scale,
+        controlnet_repo=controlnet_repo, control_scale=control_scale,
+        **generation_params
+    ).replace('.jpg', '')
 
     # Check if files already exist
     image_path = Path(output_dir) / f"{base_filename}.jpg"
@@ -160,7 +167,7 @@ def generate_and_save_image(
         gen_kwargs.update(
             # https://huggingface.co/Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro
             dict(
-                control_image=[load_image("./templates/sheet-of-8x8-chibi-characters.png")],
+                control_image=[load_image("./templates/sheet-of-4x4-chibi-characters-1024.png")],
                 control_mode=[1],
                 controlnet_conditioning_scale=[control_scale],
             )
@@ -209,12 +216,8 @@ def get_short_model_name(model_id):
     """Generate a short, SEO-friendly model name with hash"""
     # Common model short names mapping
     model_short_names = {
-        "black-forest-labs/FLUX.1-dev": "flux1-dev",
-        "black-forest-labs/FLUX.1-schnell": "flux1-schnell", 
-        "stabilityai/stable-diffusion-xl-base-1.0": "sdxl-base",
-        "stabilityai/stable-diffusion-2-1": "sd2-1",
-        "runwayml/stable-diffusion-v1-5": "sd1-5",
-        "CompVis/stable-diffusion-v1-4": "sd1-4",
+        "black-forest-labs/FLUX.1-dev": "f1d",
+        "black-forest-labs/FLUX.1-schnell": "f1s"
     }
     
     # If we have a predefined short name, use it
@@ -247,6 +250,15 @@ def get_short_lora_name(lora_repo):
     # 4-digit hash for uniqueness
     lora_hash = hashlib.sha256(lora_repo.encode()).hexdigest()[:4]
     return f"{seo_base}-{lora_hash}"
+
+def get_short_controlnet_name(controlnet_repo):
+    """Generate a short SEO-friendly ControlNet name with hash"""
+    if not controlnet_repo:
+        return None
+    base = controlnet_repo.split('/')[-1]
+    seo_base = seoify_text(base, max_length=20)
+    controlnet_hash = hashlib.sha256(controlnet_repo.encode()).hexdigest()[:4]
+    return f"{seo_base}-{controlnet_hash}"
 
 def build_grid_mask(res=32, cells=8, pad=1):
     """
@@ -291,13 +303,14 @@ models = [
         # "lora_repo": None,
         # "lora_scale": 0.8,
         "controlnet_repo": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
+        # "controlnet_repo": None,
         "control_scale": 0.30,
     },
     # Add more variants here if needed
 ]
 
 prompt = """
-8 by 8 Retro Pixel Art Character Sheet of NPC characters for pixel art game called Machi.
+4 by 4 Retro Pixel Art Character Sheet of NPC characters for pixel art game called Machi.
 """
 
 seed = 5
