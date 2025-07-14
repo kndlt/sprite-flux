@@ -1,12 +1,12 @@
 #!/bin/bash
 # Example script to run LoRA fine-tuning on FLUX.1-schnell
 
-# Make sure you have your training data in a directory with images
+# Make sure you have your training data in inputs/lora-fine-tuning directory
 # The script will automatically generate captions based on filenames
 
 # Basic training run
 python scripts/fine_tune.py \
-    --data_dir "/path/to/your/pixel_art_images" \
+    --data_dir "inputs/lora-fine-tuning" \
     --output_dir "./lora_outputs" \
     --model_name "black-forest-labs/FLUX.1-schnell" \
     --resolution 1024 \
@@ -23,7 +23,7 @@ python scripts/fine_tune.py \
 
 # Advanced training run with more configuration
 # python scripts/fine_tune.py \
-#     --data_dir "/path/to/your/pixel_art_images" \
+#     --data_dir "inputs/lora-fine-tuning" \
 #     --output_dir "./lora_outputs_advanced" \
 #     --model_name "black-forest-labs/FLUX.1-schnell" \
 #     --resolution 1024 \

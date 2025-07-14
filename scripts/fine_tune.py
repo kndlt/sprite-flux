@@ -159,7 +159,7 @@ def create_lora_config(rank=64, alpha=64, target_modules=None):
 
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune FLUX.1-schnell with LoRA")
-    parser.add_argument("--data_dir", type=str, required=True, help="Directory containing training images")
+    parser.add_argument("--data_dir", type=str, default="inputs/lora-fine-tuning", help="Directory containing training images")
     parser.add_argument("--output_dir", type=str, default="./lora_outputs", help="Output directory for LoRA weights")
     parser.add_argument("--model_name", type=str, default="black-forest-labs/FLUX.1-schnell", help="Model to fine-tune")
     parser.add_argument("--resolution", type=int, default=1024, help="Training resolution")

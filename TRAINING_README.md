@@ -4,14 +4,15 @@ This directory contains scripts for fine-tuning FLUX.1-schnell with LoRA (Low-Ra
 
 ## Setup
 
-1. Install the required dependencies:
+1. Install additional dependencies with Poetry:
 ```bash
-pip install -r requirements_training.txt
+# Check requirements_training.txt for any missing dependencies
+poetry add Pillow tqdm safetensors datasets bitsandbytes
 ```
 
 2. Prepare your training data:
-   - Create a directory with your pixel art images (JPG, PNG, WebP supported)
-   - Images should be high quality pixel art
+   - Place your pixel art images in `inputs/lora-fine-tuning/` directory
+   - Images should be high quality pixel art (JPG, PNG, WebP supported)
    - The script will automatically generate captions based on filenames
    - Recommended: At least 100-500 images for good results
 
@@ -20,8 +21,8 @@ pip install -r requirements_training.txt
 ### Basic Usage
 
 ```bash
-python scripts/fine_tune.py \
-    --data_dir "/path/to/your/pixel_art_images" \
+poetry run python scripts/fine_tune.py \
+    --data_dir "inputs/lora-fine-tuning" \
     --output_dir "./lora_outputs" \
     --num_train_epochs 100 \
     --batch_size 1 \
@@ -33,12 +34,12 @@ python scripts/fine_tune.py \
 See `train_example.sh` for more configuration options:
 
 ```bash
-./train_example.sh
+poetry run ./train_example.sh
 ```
 
 ### Key Parameters
 
-- `--data_dir`: Directory containing your training images
+- `--data_dir`: Directory containing your training images (default: "inputs/lora-fine-tuning")
 - `--output_dir`: Where to save the trained LoRA weights
 - `--model_name`: Base model (default: "black-forest-labs/FLUX.1-schnell")
 - `--resolution`: Training resolution (default: 1024)
@@ -61,7 +62,7 @@ See `train_example.sh` for more configuration options:
 After training, test your LoRA with:
 
 ```bash
-python test_lora.py \
+poetry run python test_lora.py \
     --lora_path "./lora_outputs/final_lora" \
     --prompt "retro pixel art character sprite" \
     --output_path "test_output.png"
@@ -110,8 +111,8 @@ lora_outputs/
 To automatically upload your trained LoRA:
 
 ```bash
-python scripts/fine_tune.py \
-    --data_dir "/path/to/images" \
+poetry run python scripts/fine_tune.py \
+    --data_dir "inputs/lora-fine-tuning" \
     --push_to_hub \
     --hub_model_id "your-username/flux-schnell-pixel-art-lora"
 ```
