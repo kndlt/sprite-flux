@@ -313,7 +313,7 @@ prompt = """
 2 by 2 Retro Pixel Art Character Sheet of NPC characters for pixel art game called Machi.
 """
 
-seed = 5
+seed = 12
 
 # Optional generation parameters (add any pipeline-specific parameters here)
 generation_params = {
