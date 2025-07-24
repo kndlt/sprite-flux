@@ -97,7 +97,7 @@ def detect_best_loop(hashes, frames, min_len=20, max_len=120, lam=0.5):
 def cut_loop(
     input_path: str,
     out: str = "loop.mp4",
-    min_gap: int = 12,
+    min_gap: int = 10,
     max_gap: int = 120,
     threshold: int = 2,
     limit: int = 0,
