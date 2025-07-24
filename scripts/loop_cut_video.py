@@ -38,8 +38,8 @@ def save_trimmed(frames, start, end, out_path, fps):
 def cut_loop(
     input_path: str,
     out: str = "loop.mp4",    # <- add out param
-    min_gap: int = 4,
-    max_gap: int = 60,
+    min_gap: int = 25,
+    max_gap: int = 120,
     threshold: int = 2,
     limit: int = 0
 ):
