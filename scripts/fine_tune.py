@@ -153,8 +153,7 @@ def create_lora_config(rank=64, alpha=64, target_modules=None):
         lora_alpha=alpha,
         target_modules=target_modules,
         lora_dropout=0.1,
-        bias="none",
-        task_type=TaskType.DIFFUSION_IMAGE_GENERATION,
+        bias="none"
     )
 
 def main():
@@ -208,6 +207,14 @@ def main():
         torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
         device_map="balanced" if torch.cuda.device_count() > 1 else None,
     )
+
+    # override the scheduler for training
+    pipeline.scheduler = DDPMScheduler.from_config(pipeline.scheduler.config)
+    
+    # now your scheduler.add_noise will exist
+    scheduler = pipeline.scheduler
+
+    pipeline.to(accelerator.device)
     
     # Get the transformer (UNet-like) model
     transformer = pipeline.transformer
@@ -303,7 +310,9 @@ def main():
             with accelerator.accumulate(transformer):
                 # Convert images to latent space
                 with torch.no_grad():
-                    latents = vae.encode(batch["pixel_values"]).latent_dist.sample()
+                    # latents = vae.encode(batch["pixel_values"]).latent_dist.sample()
+                    pixel_values = batch["pixel_values"].to(accelerator.device, dtype=vae.dtype)
+                    latents = vae.encode(pixel_values).latent_dist.sample()
                     latents = latents * vae.config.scaling_factor
                 
                 # Sample noise to add to the latents
