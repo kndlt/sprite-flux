@@ -1,0 +1,13 @@
+{
+  "model_id": "black-forest-labs/FLUX.1-dev",
+  "prompt": "\n2 by 2 Retro Pixel Art Character Sheet of NPC characters for pixel art game called Machi.\n",
+  "seed": 6,
+  "generation_timestamp": "2025-06-28T21:01:56.213814",
+  "generation_parameters": {},
+  "quantization": "bf16",
+  "lora_repo": "prithivMLmods/Retro-Pixel-Flux-LoRA",
+  "lora_scale": 0.8,
+  "controlnet_repo": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
+  "control_scale": 0.3,
+  "output_image": "f1d_l80_c30___2-by-2-retro-pixel-art-ch-ebea___seed-6.jpg"
+}
