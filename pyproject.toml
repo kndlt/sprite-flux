@@ -26,7 +26,8 @@ dependencies = [
     "bitsandbytes (>=0.46.1,<0.47.0)",
     "numpy (>=2.3.2,<3.0.0)",
     "imagehash (>=4.3.2,<5.0.0)",
-    "imageio[ffmpeg] (>=2.37.0,<3.0.0)"
+    "imageio[ffmpeg] (>=2.37.0,<3.0.0)",
+    "fire (>=0.7.0,<0.8.0)"
 ]
 
 
