@@ -12,17 +12,6 @@ def frame_distance(a, b):
     """Hamming distance between hashes (0 = identical)."""
     return np.count_nonzero(a ^ b)
 
-def detect_best_pair(hashes, min_gap=4, max_gap=60):
-    n = len(hashes)
-    best = (999999, 0, 0)
-    for i in range(n - min_gap):
-        j_end = min(i + max_gap, n - 1)
-        for j in range(i + min_gap, j_end + 1):
-            d = frame_distance(hashes[i], hashes[j])
-            if d < best[0]:
-                best = (d, i, j)
-    return best
-
 def save_trimmed(frames, start, end, out_path, fps):
     sliced = frames[start:end+1]
     if out_path.lower().endswith(".gif"):
@@ -75,6 +64,7 @@ def score_segment(hashes, motion, start, length, lam=0.5):
     repetition_penalty = 1.0 / (avg_mot + 1e-6)
     total = seam + lam * repetition_penalty
     return total, seam, avg_mot
+
 def detect_best_loop(hashes, frames, min_len=20, max_len=120, lam=0.5):
     """
     Find loop using:
