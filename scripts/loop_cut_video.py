@@ -112,7 +112,8 @@ def cut_loop(
     )
     print(f"Loop: {start}->{end} len={end-start} seam={seam}, avg_mot={avg_mot:.3f}, score={total:.3f}")
     if seam <= threshold:
-        save_trimmed(frames, start, end, out, fps)
+        # Always skip the last frame to avoid double-hit
+        save_trimmed(frames, start, end - 1, out, fps)
         print(f"Saved {out}")
     else:
         print("Seam too big. Raise threshold or preprocess.")
