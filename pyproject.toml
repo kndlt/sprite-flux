@@ -27,7 +27,8 @@ dependencies = [
     "numpy (>=2.3.2,<3.0.0)",
     "imagehash (>=4.3.2,<5.0.0)",
     "imageio[ffmpeg] (>=2.37.0,<3.0.0)",
-    "fire (>=0.7.0,<0.8.0)"
+    "fire (>=0.7.0,<0.8.0)",
+    "scenedetect[opencv] (>=0.6.6,<0.7.0)"
 ]
 
 
