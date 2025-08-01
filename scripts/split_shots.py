@@ -123,7 +123,8 @@ def main() -> None:
     p.add_argument("--min-scene-len", type=int, default=15)
     p.add_argument("--seconds-per-shot", type=float)
     p.add_argument("--format", choices=["mp4", "webp"], default="mp4")
-    p.add_argument("--reencode", action="store_true", default=True)
+    p.add_argument("--no-reencode", action="store_true", 
+                   help="Skip re-encoding (copy streams when possible)")
     args = p.parse_args()
 
     work = args.video
@@ -154,7 +155,7 @@ def main() -> None:
         print("[!] No cuts detected.")
     else:
         split_scenes(work, scenes, args.out, fmt=args.format,
-                     reencode=args.reencode)
+                     reencode=not args.no_reencode)
 
     if tmpdir: shutil.rmtree(tmpdir, ignore_errors=True)
 

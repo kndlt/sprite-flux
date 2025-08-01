@@ -10,16 +10,13 @@ import os
 def create_test_webp():
     """Create a simple animated WebP for testing."""
     frames = []
-    # Create 30 frames with a simple looping animation
-    for i in range(30):
+    # Create 10 frames with a simple animation
+    for i in range(10):
         # Create a simple gradient that shifts
         img_array = np.zeros((64, 64, 3), dtype=np.uint8)
-        # Moving red square that loops back
-        cycle_pos = i % 20  # 20-frame cycle
-        x = (cycle_pos * 2) % 44  # Move across 44 pixels and loop back
-        img_array[20:40, x:x+20] = [255, 0, 0]
-        # Add some background pattern
-        img_array[::4, ::4] = [50, 50, 50]  # Grid pattern
+        # Moving red square
+        x = (i * 5) % 64
+        img_array[20:40, x:min(x+20, 64)] = [255, 0, 0]
         frames.append(Image.fromarray(img_array))
     
     # Save as animated WebP

@@ -74,23 +74,8 @@ def motion_profile(frames):
 def score_segment(hashes, motion, start, length, lam=0.5):
     """Score a candidate loop segment."""
     end = start + length
-    if end >= len(hashes):
-        # Prevent out of bounds access
-        end = len(hashes) - 1
-        length = end - start
-    
-    if length <= 0:
-        return (999999, 999, 0.0)
-    
-    seam = frame_distance(hashes[start], hashes[end]) if end < len(hashes) else 999
-    
-    # Ensure we don't go out of bounds for motion array
-    motion_end = min(end, len(motion))
-    if motion_end <= start:
-        avg_mot = 0.0
-    else:
-        avg_mot = motion[start:motion_end].mean() if motion_end > start else 0.0
-    
+    seam = frame_distance(hashes[start], hashes[end])
+    avg_mot = motion[start:end].mean()
     # Penalize low motion; tweak as needed
     repetition_penalty = 1.0 / (avg_mot + 1e-6)
     total = seam + lam * repetition_penalty
@@ -102,39 +87,17 @@ def detect_best_loop(hashes, frames, min_len=20, max_len=120, lam=0.5):
       1) autocorr to guess period
       2) score segments for low seam + high internal motion
     """
-    n = len(frames)
-    if n < min_len:
-        # Not enough frames for a proper loop
-        return (999999, 0, min(n-1, 1), 999, 0.0)
-    
     period, _ = period_autocorr(frames, min_len, max_len)
     if period < min_len:
         period = min_len
-    
     motion = motion_profile(frames)
-    if len(motion) == 0:
-        # No motion data available
-        return (999999, 0, min(n-1, period), 999, 0.0)
-    
+    n = len(frames)
     best = (999999, 0, 0, 0, 0)  # total_score, start, end, seam, avg_mot
     # Ensure we don't overflow end index
-    max_start = max(0, n - period - 1)
-    if max_start <= 0:
-        # Sequence too short for the detected period
-        period = min(period, n // 2) if n > 2 else 1
-        max_start = max(0, n - period - 1)
-    
-    for start in range(0, max_start + 1):
-        if start + period < n:  # Ensure we don't go out of bounds
-            total, seam, avg_mot = score_segment(hashes, motion, start, period, lam)
-            if total < best[0]:
-                best = (total, start, start + period, seam, avg_mot)
-    
-    # If no valid loop found, return a simple fallback
-    if best[0] == 999999:
-        end_idx = min(n-1, period) if period > 0 else n-1
-        best = (999999, 0, end_idx, 999, 0.0)
-    
+    for start in range(0, n - period - 1):
+        total, seam, avg_mot = score_segment(hashes, motion, start, period, lam)
+        if total < best[0]:
+            best = (total, start, start + period, seam, avg_mot)
     return best
 
 def cut_loop(
