@@ -1,3 +1,8 @@
+"""
+Loop detection and trimming for animated images and videos.
+Supports input formats: MP4, GIF, APNG, WebP
+Supports output formats: MP4, GIF, WebP
+"""
 import imageio.v3 as iio
 import numpy as np
 from PIL import Image
@@ -22,6 +27,17 @@ def save_trimmed(frames, start, end, out_path, fps):
             loop=0,
             duration=int(1000/fps),
             disposal=2
+        )
+    elif out_path.lower().endswith(".webp"):
+        sliced[0].save(
+            out_path,
+            save_all=True,
+            append_images=sliced[1:],
+            loop=0,
+            duration=int(1000/fps),
+            method=6,  # Better compression
+            lossless=False,  # Set to True for lossless compression
+            quality=80  # Quality for lossy compression
         )
     else:
         arr = [np.array(f) for f in sliced]
@@ -58,8 +74,23 @@ def motion_profile(frames):
 def score_segment(hashes, motion, start, length, lam=0.5):
     """Score a candidate loop segment."""
     end = start + length
-    seam = frame_distance(hashes[start], hashes[end])
-    avg_mot = motion[start:end].mean()
+    if end >= len(hashes):
+        # Prevent out of bounds access
+        end = len(hashes) - 1
+        length = end - start
+    
+    if length <= 0:
+        return (999999, 999, 0.0)
+    
+    seam = frame_distance(hashes[start], hashes[end]) if end < len(hashes) else 999
+    
+    # Ensure we don't go out of bounds for motion array
+    motion_end = min(end, len(motion))
+    if motion_end <= start:
+        avg_mot = 0.0
+    else:
+        avg_mot = motion[start:motion_end].mean() if motion_end > start else 0.0
+    
     # Penalize low motion; tweak as needed
     repetition_penalty = 1.0 / (avg_mot + 1e-6)
     total = seam + lam * repetition_penalty
@@ -71,41 +102,88 @@ def detect_best_loop(hashes, frames, min_len=20, max_len=120, lam=0.5):
       1) autocorr to guess period
       2) score segments for low seam + high internal motion
     """
+    n = len(frames)
+    if n < min_len:
+        # Not enough frames for a proper loop
+        return (999999, 0, min(n-1, 1), 999, 0.0)
+    
     period, _ = period_autocorr(frames, min_len, max_len)
     if period < min_len:
         period = min_len
+    
     motion = motion_profile(frames)
-    n = len(frames)
+    if len(motion) == 0:
+        # No motion data available
+        return (999999, 0, min(n-1, period), 999, 0.0)
+    
     best = (999999, 0, 0, 0, 0)  # total_score, start, end, seam, avg_mot
     # Ensure we don't overflow end index
-    for start in range(0, n - period - 1):
-        total, seam, avg_mot = score_segment(hashes, motion, start, period, lam)
-        if total < best[0]:
-            best = (total, start, start + period, seam, avg_mot)
+    max_start = max(0, n - period - 1)
+    if max_start <= 0:
+        # Sequence too short for the detected period
+        period = min(period, n // 2) if n > 2 else 1
+        max_start = max(0, n - period - 1)
+    
+    for start in range(0, max_start + 1):
+        if start + period < n:  # Ensure we don't go out of bounds
+            total, seam, avg_mot = score_segment(hashes, motion, start, period, lam)
+            if total < best[0]:
+                best = (total, start, start + period, seam, avg_mot)
+    
+    # If no valid loop found, return a simple fallback
+    if best[0] == 999999:
+        end_idx = min(n-1, period) if period > 0 else n-1
+        best = (999999, 0, end_idx, 999, 0.0)
+    
     return best
 
 def cut_loop(
     input_path: str,
-    out: str = "loop.mp4",
+    out: str = "loop.webp",
     min_gap: int = 10,
     max_gap: int = 120,
     threshold: int = 2,
     limit: int = 0,
     lam: float = 0.5
 ):
-    # Try FFMPEG first; fallback to generic readers for GIFs/APNGs
+    # Try FFMPEG first; fallback to generic readers for GIFs/APNGs/WebPs
     fps = 12
     try:
-        meta = iio.immeta(input_path, plugin="FFMPEG")
-        fps = meta.get("fps", fps)
-        frames_np = iio.imread(input_path, plugin="FFMPEG")
-    except Exception:
-        frames_np = iio.imread(input_path)
-    if frames_np.ndim == 3:
-        frames_np = frames_np[None, ...]
+        # For WebP files, use PIL directly for better support
+        if input_path.lower().endswith('.webp'):
+            img = Image.open(input_path)
+            frames = []
+            try:
+                while True:
+                    frames.append(img.copy())
+                    img.seek(img.tell() + 1)
+            except EOFError:
+                pass  # End of frames
+            
+            # Try to get duration from WebP metadata
+            if hasattr(img, 'info') and 'duration' in img.info:
+                duration_ms = img.info['duration']
+                fps = 1000.0 / duration_ms if duration_ms > 0 else 12
+            
+            frames_np = [np.array(f) for f in frames]
+        else:
+            # Use imageio for other formats
+            try:
+                meta = iio.immeta(input_path, plugin="FFMPEG")
+                fps = meta.get("fps", fps)
+                frames_np = iio.imread(input_path, plugin="FFMPEG")
+            except Exception:
+                frames_np = iio.imread(input_path)
+            if frames_np.ndim == 3:
+                frames_np = frames_np[None, ...]
+            frames_np = [f for f in frames_np]
+    except Exception as e:
+        print(f"Error reading {input_path}: {e}")
+        return None
+    
     if limit > 0:
         frames_np = frames_np[:limit]
-    frames = [Image.fromarray(f) for f in frames_np]
+    frames = [Image.fromarray(f) if isinstance(f, np.ndarray) else f for f in frames_np]
     hashes = [phash_vec(f) for f in frames]
     total, start, end, seam, avg_mot = detect_best_loop(
         hashes, frames, min_len=min_gap, max_len=max_gap, lam=lam
