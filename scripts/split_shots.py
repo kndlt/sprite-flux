@@ -1,26 +1,38 @@
 #!/usr/bin/env python3
 """
-split_shots.py — Split an input clip into one file per shot using
-PySceneDetect + FFmpeg.  Supports MP4 or animated WebP in, MP4/WebP out.
+VideoShotSplitter ───────────────────────────────────────────────────────────
+Split an input video (from ComfyUI “Load Video”) into individual shots and
+return a list of VIDEO objects, ready for further processing.
+
+Same features as before, but the output is now a list of `VideoFromFile`
+objects instead of a comma-separated STRING.
 """
+
 from __future__ import annotations
-import argparse, glob, os, shutil, subprocess, tempfile
+import os, shutil, subprocess, tempfile, glob
 from pathlib import Path
 from typing import List, Tuple
+from inspect import cleandoc
 
-# ── PySceneDetect -----------------------------------------------------------
-from scenedetect import VideoManager, SceneManager
-from scenedetect.detectors import ContentDetector, AdaptiveDetector
-from scenedetect.frame_timecode import FrameTimecode
+from comfy.utils import VideoFromFile       # ← NEW
 
-# ---------------------------------------------------------------------------
-# Scene detection helpers
-# ---------------------------------------------------------------------------
+# ── optional deps -----------------------------------------------------------
+try:
+    from scenedetect import VideoManager, SceneManager
+    from scenedetect.detectors import ContentDetector, AdaptiveDetector
+    from scenedetect.frame_timecode import FrameTimecode
+    SCENEDETECT_AVAILABLE = True
+except ImportError:
+    SCENEDETECT_AVAILABLE = False
 
-def detect_scenes(
-    video: Path, *, detector_cls, threshold: float, min_len: int
-) -> List[Tuple[FrameTimecode, FrameTimecode]]:
-    """Return [(start, end_exclusive), …] in FrameTimecodes."""
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+
+# ── helpers (unchanged) -----------------------------------------------------
+def detect_scenes(video: Path, *, detector_cls, threshold: float, min_len: int):
     vm = VideoManager([str(video)])
     sm = SceneManager()
     sm.add_detector(detector_cls(threshold=threshold, min_scene_len=min_len))
@@ -31,133 +43,176 @@ def detect_scenes(
     finally:
         vm.release()
 
-# ---------------------------------------------------------------------------
-# WebP → temp MP4 shim (loss-less x264)
-# ---------------------------------------------------------------------------
-
 def webp_to_tmp_mp4(src: Path) -> Path:
     tmp_dir = Path(tempfile.mkdtemp(prefix="splitshots_"))
     dst = tmp_dir / f"{src.stem}.mp4"
-
     cmd = [
         "ffmpeg", "-hide_banner", "-loglevel", "error",
-        "-i", str(src),
-        "-c:v", "libx264", "-crf", "0", "-pix_fmt", "yuv444p",
-        "-movflags", "+faststart", str(dst),
+        "-i", str(src), "-c:v", "libx264", "-crf", "0",
+        "-pix_fmt", "yuv444p", "-movflags", "+faststart", str(dst)
     ]
-    if subprocess.call(cmd) == 0 and dst.stat().st_size:
+    if subprocess.call(cmd) == 0 and dst.exists() and dst.stat().st_size:
         return dst
-
-    # Fallback: webpmux → PNGs → MP4
     if not shutil.which("webpmux"):
-        raise RuntimeError("Need 'webpmux' or an FFmpeg with WebP support.")
+        raise RuntimeError("Need 'webpmux' or FFmpeg built with WebP.")
     frames = tmp_dir / "frames"; frames.mkdir()
-    subprocess.check_call(["webpmux", "-dump", str(src),
-                           "-o", str(frames / "frame.png")])
+    subprocess.check_call(["webpmux", "-dump", str(src), "-o", str(frames / "frm.png")])
     subprocess.check_call([
         "ffmpeg", "-hide_banner", "-loglevel", "error",
-        "-framerate", "30", "-pattern_type", "glob",
-        "-i", str(frames / "frame*.png"),
+        "-framerate", "30", "-pattern_type", "glob", "-i", str(frames / "frm*.png"),
         "-c:v", "libx264", "-crf", "0", "-pix_fmt", "yuv444p",
-        "-movflags", "+faststart", str(dst),
+        "-movflags", "+faststart", str(dst)
     ])
-    for p in glob.glob(str(frames / "frame*.png")): os.remove(p)
+    for p in glob.glob(str(frames / "frm*.png")): os.remove(p)
     return dst
 
-# ---------------------------------------------------------------------------
-# FFmpeg command builder
-# ---------------------------------------------------------------------------
-
-def encode_cmd(fmt: str, src: Path, start_ts: str, n_frames: int, dst: Path,
-               *, reencode: bool) -> List[str]:
-    """Return FFmpeg cmd that copies/encodes exactly n_frames starting @ start."""
+def encode_cmd(fmt: str, src: Path, start_ts: str, n_frames: int,
+               dst: Path, *, reencode: bool) -> List[str]:
     if fmt == "mp4" and not reencode:
-        return [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-ss", start_ts, "-i", str(src),
-            "-frames:v", str(n_frames),
-            "-c", "copy", str(dst),
-        ]
-    common = [
-        "ffmpeg", "-hide_banner", "-loglevel", "error",
-        "-ss", start_ts, "-i", str(src),
-        "-frames:v", str(n_frames)
-    ]
-    if fmt == "mp4":   # re-encode loss-less H.264
-        common += ["-c:v", "libx264", "-crf", "0", "-preset", "veryslow",
-                   "-pix_fmt", "yuv444p"]
+        return ["ffmpeg", "-hide_banner", "-loglevel", "error",
+                "-ss", start_ts, "-i", str(src),
+                "-frames:v", str(n_frames), "-c", "copy", str(dst)]
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error",
+           "-ss", start_ts, "-i", str(src), "-frames:v", str(n_frames)]
+    if fmt == "mp4":
+        cmd += ["-c:v", "libx264", "-crf", "0", "-preset", "veryslow",
+                "-pix_fmt", "yuv444p"]
     elif fmt == "webp":
-        common += ["-an", "-vcodec", "libwebp", "-lossless", "1",
-                   "-preset", "default", "-loop", "0", "-vsync", "0"]
+        cmd += ["-an", "-vcodec", "libwebp", "-lossless", "1",
+                "-preset", "default", "-loop", "0", "-vsync", "0"]
     else:
         raise ValueError(fmt)
-    return common + [str(dst)]
+    return cmd + [str(dst)]
 
-# ---------------------------------------------------------------------------
-# Splitter
-# ---------------------------------------------------------------------------
+# ── node --------------------------------------------------------------------
+class VideoShotSplitter:
+    def __init__(self):
+        self._temp_sources: list[Path] = []
 
-def split_scenes(src: Path, scenes, out_dir: Path, *, fmt: str, reencode: bool):
-    out_dir.mkdir(parents=True, exist_ok=True)
-    print(f"[i] Detected {len(scenes)} shots.")
-    for idx, (start, end_excl) in enumerate(scenes):
-        n = end_excl.get_frames() - start.get_frames()  # <= exact length
-        if n <= 0: continue
-        dst = out_dir / f"shot-{idx:03}.{fmt}"
-        cmd = encode_cmd(fmt, src, start.get_timecode(), n, dst,
-                         reencode=reencode)
-        subprocess.check_call(cmd)
-        print(f"    ↳ {dst.name}  ({start.get_timecode()} × {n} frames)")
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "video": ("VIDEO",),
+                "detector": (["content", "adaptive"], {"default": "content"}),
+                "threshold": ("FLOAT", {"default": 8.0, "min": 0.1, "max": 50}),
+                "min_scene_len": ("INT", {"default": 15, "min": 1, "max": 300}),
+                "output_format": (["mp4", "webp"], {"default": "mp4"}),
+                "reencode": ("BOOLEAN", {"default": False}),
+            },
+            "optional": {
+                "seconds_per_shot": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 60.0
+                }),
+                "output_dir": ("STRING", {"default": ""}),
+            },
+        }
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
+    RETURN_TYPES = ("VIDEO",)          # list[VideoFromFile]
+    RETURN_NAMES = ("shot_videos",)
+    FUNCTION      = "split"
+    CATEGORY      = "Video/Edit"
+    DESCRIPTION   = cleandoc(__doc__)
 
-def main() -> None:
-    p = argparse.ArgumentParser(description="Split a clip into per-shot files.")
-    p.add_argument("video", type=Path, help="Source .mp4 or animated .webp")
-    p.add_argument("--out", type=Path, default=Path("./shots"))
-    p.add_argument("--detector", choices=["content", "adaptive"],
-                   default="content")
-    p.add_argument("--threshold", type=float, default=8.0)
-    p.add_argument("--min-scene-len", type=int, default=15)
-    p.add_argument("--seconds-per-shot", type=float)
-    p.add_argument("--format", choices=["mp4", "webp"], default="mp4")
-    p.add_argument("--no-reencode", action="store_true", 
-                   help="Skip re-encoding (copy streams when possible)")
-    args = p.parse_args()
+    # ── main ----------------------------------------------------------------
+    def split(self, video, detector, threshold, min_scene_len,
+              output_format, reencode,
+              seconds_per_shot=0.0, output_dir=""):
 
-    work = args.video
-    tmpdir = None
-    if work.suffix.lower() == ".webp":
-        print("[i] Converting WebP → temp MP4 for detection…")
-        work = webp_to_tmp_mp4(work)
-        tmpdir = work.parent
+        try:
+            src_path = self._extract_video_path(video)
+            if not src_path:
+                raise RuntimeError("Unable to resolve video file path.")
+            src_path = Path(src_path)
 
-    if args.seconds_per_shot:                       # manual chunking
-        import cv2
-        cap = cv2.VideoCapture(str(work))
+            out_dir = Path(output_dir) if output_dir else src_path.parent / f"{src_path.stem}_shots"
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            # WebP → temp MP4
+            if src_path.suffix.lower() == ".webp":
+                work_path = webp_to_tmp_mp4(src_path)
+                tmp_dir   = work_path.parent
+            else:
+                work_path, tmp_dir = src_path, None
+
+            # build scene list
+            if seconds_per_shot > 0:
+                scenes = self._fixed_length_scenes(work_path, seconds_per_shot)
+            else:
+                if not SCENEDETECT_AVAILABLE:
+                    raise RuntimeError("PySceneDetect not installed.")
+                Det = ContentDetector if detector == "content" else AdaptiveDetector
+                scenes = detect_scenes(work_path, detector_cls=Det,
+                                       threshold=threshold, min_len=min_scene_len)
+            if not scenes:
+                print("[VideoShotSplitter] No cuts detected.")
+                return ([],)
+
+            # slice & wrap
+            shot_videos = []
+            for idx, (start, end) in enumerate(scenes):
+                n = end.get_frames() - start.get_frames()
+                if n <= 0: continue
+                dst = out_dir / f"shot-{idx:03}.{output_format}"
+                subprocess.check_call(encode_cmd(output_format, work_path,
+                                                 start.get_timecode(), n,
+                                                 dst, reencode=reencode))
+                shot_videos.append(VideoFromFile(str(dst)))  # ← wrapper
+                print(f"[VideoShotSplitter] → {dst.name}")
+
+            # clean temp stuff
+            if tmp_dir: shutil.rmtree(tmp_dir, ignore_errors=True)
+            for p in self._temp_sources:
+                try: os.remove(p)
+                except: pass
+
+            return (shot_videos,)
+
+        except Exception as e:
+            print(f"[VideoShotSplitter-ERROR] {e}")
+            return ([],)
+
+    # ── helpers ------------------------------------------------------------
+    def _fixed_length_scenes(self, path: Path, secs: float):
+        if not CV2_AVAILABLE:
+            raise RuntimeError("OpenCV required for fixed-length splitting.")
+        cap = cv2.VideoCapture(str(path))
         fps = cap.get(cv2.CAP_PROP_FPS) or 30
-        tf = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        step = int(args.seconds_per_shot * fps)
-        scenes = []
-        for f0 in range(0, tf, step):
-            scenes.append((FrameTimecode(f0, fps),
-                           FrameTimecode(min(f0 + step, tf), fps)))
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        step  = int(secs * fps)
+        if not SCENEDETECT_AVAILABLE:
+            from collections import namedtuple
+            FrameTimecodeLocal = namedtuple("FT", "frame fps")
+            FrameTimecodeLocal.get_frames   = lambda self: self.frame
+            FrameTimecodeLocal.get_timecode = lambda self: f"{self.frame / self.fps:.3f}"
+            FTC = FrameTimecodeLocal
+        else:
+            FTC = FrameTimecode
+        scenes = [(FTC(f0, fps), FTC(min(f0 + step, total), fps))
+                  for f0 in range(0, total, step)]
         cap.release()
-    else:
-        Det = ContentDetector if args.detector == "content" else AdaptiveDetector
-        scenes = detect_scenes(work, detector_cls=Det,
-                               threshold=args.threshold,
-                               min_len=args.min_scene_len)
+        return scenes
 
-    if not scenes:
-        print("[!] No cuts detected.")
-    else:
-        split_scenes(work, scenes, args.out, fmt=args.format,
-                     reencode=not args.no_reencode)
-
-    if tmpdir: shutil.rmtree(tmpdir, ignore_errors=True)
-
-if __name__ == "__main__":
-    main()
+    def _extract_video_path(self, vid):
+        if isinstance(vid, str) and os.path.exists(vid):
+            return vid
+        if hasattr(vid, "_VideoFromFile__file"):
+            p = getattr(vid, "_VideoFromFile__file")
+            if isinstance(p, str) and os.path.exists(p):
+                return p
+        for attr in ("video_path", "filename", "path", "_path"):
+            if hasattr(vid, attr):
+                p = getattr(vid, attr)
+                if isinstance(p, str) and os.path.exists(p):
+                    return p
+        if hasattr(vid, "save_to"):
+            tmp = Path(tempfile.mkdtemp(prefix="splitshots_src_")) / "in.mp4"
+            vid.save_to(str(tmp))
+            self._temp_sources.append(tmp)
+            return str(tmp)
+        if isinstance(vid, dict):
+            for k in ("video_path", "filename", "path"):
+                if k in vid and os.path.exists(vid[k]):
+                    return vid[k]
+        s = str(vid)
+        return s if os.path.exists(s) else None
